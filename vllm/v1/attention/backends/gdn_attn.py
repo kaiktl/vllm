@@ -200,6 +200,20 @@ class GDNAttentionMetadataBuilder(AttentionMetadataBuilder[GDNAttentionMetadata]
             num_decodes, num_prefills, num_decode_tokens, num_prefill_tokens = (
                 split_decodes_and_prefills(m, decode_threshold=1)
             )
+
+            # When MRv2 does not pass num_decode_draft_tokens_cpu, mixed
+            # batches (chunked-prefill continuation with query_len=1
+            # alongside MTP decode with query_len>1) land here instead of
+            # the spec-decode branch.  The FLA kernel cannot handle a batch
+            # that mixes decode and prefill sequences, so reclassify the
+            # decodes as prefills — the prefill kernel handles 1-token
+            # sequences with initial state correctly.
+            if num_decodes > 0 and num_prefills > 0:
+                num_prefills += num_decodes
+                num_prefill_tokens += num_decode_tokens
+                num_decodes = 0
+                num_decode_tokens = 0
+
             num_spec_decode_tokens = 0
             spec_token_indx = None
             non_spec_token_indx = None
